@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mola-inspired Blobs with Spacing</title>
+    <script src=" https://cdn.jsdelivr.net/npm/d3-delaunay@6.0.4/dist/d3-delaunay.min.js "></script>
+    <script src=" https://cdn.jsdelivr.net/npm/mathjs@11.11.2/lib/browser/math.min.js "></script>
+</head>
+<body>
+
+<canvas id="molaCanvas" width="800" height="800"></canvas>
+
+<script>
+    const canvas = document.getElementById('molaCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const numPoints = 100;  // Number of seed points
+    const points = Array.from({length: numPoints}, () => [
+        Math.random() * canvas.width,
+        Math.random() * canvas.height
+    ]);
+
+    // Create the Voronoi diagram
+    const delaunay = d3.Delaunay.from(points);
+    const voronoi = delaunay.voronoi([0, 0, canvas.width, canvas.height]);
+
+    // Get centroid (center point) of polygon
+    function centroid(polygon) {
+        let x = 0;
+        let y = 0;
+        for (const [px, py] of polygon) {
+            x += px;
+            y += py;
+        }
+        x /= polygon.length;
+        y /= polygon.length;
+        return [x, y];
+    }
+
+    function shrinkPolygon(polygon, factor = 0.5) {
+        const c = centroid(polygon);
+        return polygon.map(([x, y]) => {
+            const mx = (x + c[0]) * factor;
+            const my = (y + c[1]) * factor;
+            return [mx, my];
+        });
+    }
+
+    // Increase the number of points in a polygon through linear interpolation
+    // If you pass a polygon a factor of '3', the function creates 2 new points between each pair of original points
+    function interpolatePoints(points, factor) {
+        if (factor <= 1) return points;
+
+        let newPoints = [];
+
+        for (let i = 0; i < points.length; i++) {
+            let start = points[i];
+            let end = points[(i + 1) % points.length];  // wrap around to 0 for the last point
+
+            newPoints.push(start);
+
+            for (let j = 1; j < factor; j++) {
+                let fraction = j / factor;
+                let x = start[0] + (end[0] - start[0]) * fraction;
+                let y = start[1] + (end[1] - start[1]) * fraction;
+                newPoints.push([x, y]);
+            }
+        }
+
+        return newPoints;
+    }
+
+    function fftSmooth(points, cutoffFrequency = 0.1) {
+        const x = points.map(p => p[0]);
+        const y = points.map(p => p[1]);
+
+        // Apply FFT
+        const freqX = math.fft(x);
+        const freqY = math.fft(y);
+
+        let i = Math.floor(cutoffFrequency * points.length);
+        if (i < 1) i = 2;
+
+        // Filter out high frequencies
+        for (; i < points.length; i++) {
+            freqX[i] = math.complex({re: 0, im: 0});
+            freqY[i] = math.complex({re: 0, im: 0});
+        }
+
+        // Apply inverse FFT
+        const smoothX = math.ifft(freqX);
+        const smoothY = math.ifft(freqY);
+
+        return smoothX.map((val, index) => [val.re, smoothY[index].re]);
+    }
+
+    // Draw the "shrunken" Voronoi cells as blobs
+    for (let i = 0; i < points.length; i++) {
+        const originalPolygon = voronoi.cellPolygon(i);
+        // const shrunkenPolygon = shrinkPolygon(originalPolygon, 1);
+        const denserPolygon = interpolatePoints(originalPolygon, 3);
+        const smoothPolygon = fftSmooth(denserPolygon, 0.9);
+
+        ctx.fillStyle = ['red', 'yellow', 'blue', 'black', 'green'][Math.floor(Math.random() * 5)];  // Change as per your color preference
+        ctx.beginPath();
+        ctx.moveTo(...smoothPolygon[0]);
+        for (let [x, y] of smoothPolygon) {
+            ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+</script>
+
+</body>
+</html>
